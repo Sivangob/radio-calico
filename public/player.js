@@ -141,7 +141,24 @@ function initializePlayer() {
         hls = new Hls({
             enableWorker: true,
             lowLatencyMode: false,
-            backBufferLength: 90
+            backBufferLength: 90,
+            maxBufferLength: 60,           // Increased buffer for stability
+            maxMaxBufferLength: 120,        // Maximum buffer size
+            maxBufferSize: 60 * 1000 * 1000, // 60MB buffer
+            maxBufferHole: 0.5,             // Tolerance for buffer gaps
+            highBufferWatchdogPeriod: 3,    // Check buffer health more frequently
+            nudgeMaxRetry: 10,              // More retry attempts for playback issues
+            manifestLoadingTimeOut: 20000,  // 20 second timeout for manifest
+            manifestLoadingMaxRetry: 6,     // More manifest retry attempts
+            manifestLoadingRetryDelay: 1000, // 1 second between manifest retries
+            levelLoadingTimeOut: 20000,     // 20 second timeout for level loading
+            levelLoadingMaxRetry: 6,        // More level retry attempts
+            levelLoadingRetryDelay: 1000,   // 1 second between level retries
+            fragLoadingTimeOut: 30000,      // 30 second timeout for fragments
+            fragLoadingMaxRetry: 10,        // More fragment retry attempts
+            fragLoadingRetryDelay: 1000,    // 1 second between fragment retries
+            startFragPrefetch: true,        // Prefetch fragments for smoother playback
+            testBandwidth: false            // Don't test bandwidth to avoid interruptions
         });
 
         hls.loadSource(streamUrl);
@@ -158,23 +175,87 @@ function initializePlayer() {
             updateStreamQuality();
         });
 
+        // Track error recovery attempts
+        let networkErrorCount = 0;
+        let mediaErrorCount = 0;
+        const MAX_RECOVERY_ATTEMPTS = 5;
+
         hls.on(Hls.Events.ERROR, (event, data) => {
             console.error('HLS error:', data);
+
+            // Handle non-fatal errors (try to recover silently)
+            if (!data.fatal) {
+                console.log('Non-fatal error, attempting silent recovery...');
+                return;
+            }
+
+            // Handle fatal errors with recovery attempts
             if (data.fatal) {
                 switch(data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        showError('Network error: Unable to load stream');
-                        hls.startLoad();
+                        networkErrorCount++;
+                        console.log(`Network error attempt ${networkErrorCount}/${MAX_RECOVERY_ATTEMPTS}`);
+
+                        if (networkErrorCount <= MAX_RECOVERY_ATTEMPTS) {
+                            console.log('Attempting to recover from network error...');
+                            // Try to restart loading after a brief delay
+                            setTimeout(() => {
+                                hls.startLoad();
+                                if (isPlaying) {
+                                    audioPlayer.play().catch(err => {
+                                        console.error('Failed to resume playback:', err);
+                                    });
+                                }
+                            }, 1000);
+                        } else {
+                            showError('Network error: Unable to load stream. Please check your connection.');
+                            networkErrorCount = 0; // Reset counter
+                        }
                         break;
+
                     case Hls.ErrorTypes.MEDIA_ERROR:
-                        showError('Media error: Unable to play stream');
-                        hls.recoverMediaError();
+                        mediaErrorCount++;
+                        console.log(`Media error attempt ${mediaErrorCount}/${MAX_RECOVERY_ATTEMPTS}`);
+
+                        if (mediaErrorCount <= MAX_RECOVERY_ATTEMPTS) {
+                            console.log('Attempting to recover from media error...');
+                            hls.recoverMediaError();
+                            // If still failing, try swapping audio codec
+                            if (mediaErrorCount > 2) {
+                                console.log('Trying codec swap recovery...');
+                                setTimeout(() => {
+                                    hls.swapAudioCodec();
+                                    hls.recoverMediaError();
+                                }, 1000);
+                            }
+                        } else {
+                            showError('Media error: Unable to play stream. Please refresh the page.');
+                            mediaErrorCount = 0; // Reset counter
+                        }
                         break;
+
                     default:
-                        showError('Fatal error: Cannot recover stream');
-                        hls.destroy();
+                        showError('Playback error occurred. Please refresh the page.');
+                        console.error('Unrecoverable error:', data);
+                        // Don't destroy immediately, give it a chance to recover
+                        setTimeout(() => {
+                            if (data.fatal) {
+                                hls.destroy();
+                                initializePlayer();
+                            }
+                        }, 2000);
                         break;
                 }
+            }
+        });
+
+        // Reset error counters on successful recovery
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+            if (networkErrorCount > 0 || mediaErrorCount > 0) {
+                console.log('Stream recovered successfully, resetting error counters');
+                networkErrorCount = 0;
+                mediaErrorCount = 0;
+                hideError();
             }
         });
     } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
@@ -259,6 +340,60 @@ audioPlayer.addEventListener('pause', () => {
     isPlaying = false;
     playIcon.textContent = '▶';
     stopTimer();
+});
+
+// Handle stalling and buffering issues
+let stallRecoveryTimeout = null;
+let isBuffering = false;
+
+audioPlayer.addEventListener('stalled', () => {
+    console.log('Playback stalled, attempting recovery...');
+    if (isPlaying && hls) {
+        // Try to recover from stall after 2 seconds
+        stallRecoveryTimeout = setTimeout(() => {
+            console.log('Recovering from stall...');
+            hls.startLoad();
+            audioPlayer.play().catch(err => {
+                console.error('Failed to recover from stall:', err);
+            });
+        }, 2000);
+    }
+});
+
+audioPlayer.addEventListener('waiting', () => {
+    console.log('Buffering...');
+    isBuffering = true;
+});
+
+audioPlayer.addEventListener('canplay', () => {
+    if (stallRecoveryTimeout) {
+        clearTimeout(stallRecoveryTimeout);
+        stallRecoveryTimeout = null;
+    }
+    if (isBuffering) {
+        console.log('Buffering complete');
+        isBuffering = false;
+        // Resume playback if it was playing before
+        if (isPlaying) {
+            audioPlayer.play().catch(err => {
+                console.error('Failed to resume after buffering:', err);
+            });
+        }
+    }
+});
+
+// Handle seeking issues that can cause dropouts
+audioPlayer.addEventListener('seeking', () => {
+    console.log('Seeking...');
+});
+
+audioPlayer.addEventListener('seeked', () => {
+    console.log('Seek complete');
+    if (isPlaying) {
+        audioPlayer.play().catch(err => {
+            console.error('Failed to resume after seek:', err);
+        });
+    }
 });
 
 // User ID management - create persistent ID based on browser fingerprint + IP
