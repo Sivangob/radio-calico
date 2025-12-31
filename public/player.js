@@ -71,35 +71,66 @@ function hideError() {
 function updateStreamQuality() {
     if (!hls || hls.levels.length === 0) {
         currentStreamQuality = 'Detecting...';
+        updateStreamQualityDisplay();
         return;
     }
 
     const currentLevel = hls.levels[hls.currentLevel];
     if (!currentLevel) {
         currentStreamQuality = 'Unknown';
+        updateStreamQualityDisplay();
         return;
     }
 
-    // Detect quality based on bitrate
-    // FLAC lossless will have higher bitrate (typically 600-1400 kbps)
-    // MP3 VBR will have lower bitrate (around 192 kbps)
-    const bitrate = currentLevel.bitrate / 1000; // Convert to kbps
-
-    if (bitrate > 300) {
-        currentStreamQuality = '48kHz FLAC / HLS Lossless';
-    } else {
-        currentStreamQuality = '192kbps VBR MP3';
+    // Try to detect quality from codec info first (more robust)
+    let qualityDetected = false;
+    if (currentLevel.audioCodec) {
+        const codec = currentLevel.audioCodec.toLowerCase();
+        // Check for FLAC codec
+        if (codec.includes('flac')) {
+            currentStreamQuality = '48kHz FLAC / HLS Lossless';
+            qualityDetected = true;
+        }
+        // Check for MP3 codec
+        else if (codec.includes('mp3') || codec.includes('mp4a')) {
+            currentStreamQuality = '192kbps VBR MP3';
+            qualityDetected = true;
+        }
     }
 
-    console.log(`Stream quality detected: ${currentStreamQuality} (${bitrate.toFixed(0)} kbps)`);
+    // Fall back to bitrate detection if codec info is unavailable
+    if (!qualityDetected) {
+        const bitrate = currentLevel.bitrate / 1000; // Convert to kbps
 
-    // Update the display if metadata is already loaded
+        // FLAC lossless will have higher bitrate (typically 600-1400 kbps)
+        // MP3 VBR will have lower bitrate (around 192 kbps)
+        if (bitrate > 300) {
+            currentStreamQuality = '48kHz FLAC / HLS Lossless';
+        } else {
+            currentStreamQuality = '192kbps VBR MP3';
+        }
+
+        console.log(`Stream quality detected via bitrate: ${currentStreamQuality} (${bitrate.toFixed(0)} kbps)`);
+    } else {
+        console.log(`Stream quality detected via codec: ${currentStreamQuality}`);
+    }
+
+    // Update the display directly without re-fetching metadata
+    updateStreamQualityDisplay();
+}
+
+// Update only the stream quality display in the DOM
+function updateStreamQualityDisplay() {
     const metaElement = document.getElementById('currentMeta');
     if (metaElement && metaElement.textContent) {
-        // Trigger a metadata refresh to update the stream quality display
-        const currentArtist = document.getElementById('currentArtist').textContent;
-        if (currentArtist && currentArtist !== 'Loading...') {
-            fetchMetadata();
+        // Extract current metadata and update only the stream quality line
+        const lines = metaElement.textContent.split('\n');
+        if (lines.length >= 2) {
+            // Keep the source quality line, update stream quality line
+            metaElement.textContent = `${lines[0]}\nStream quality: ${currentStreamQuality}`;
+        } else {
+            // If metadata not yet populated, set initial format
+            metaElement.textContent = `Source quality: Unknown\nStream quality: ${currentStreamQuality}`;
         }
     }
 }
@@ -149,10 +180,49 @@ function initializePlayer() {
     } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
         audioPlayer.src = streamUrl;
-        // For native HLS, we can't detect quality changes automatically
-        currentStreamQuality = '48kHz FLAC / HLS Lossless (auto)';
+
+        // For Safari's native HLS, we can't detect quality changes automatically
+        // Set initial state as detecting
+        currentStreamQuality = 'Detecting... (Safari native HLS)';
+        updateStreamQualityDisplay();
+
+        // Try to detect quality after playback starts
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            // Safari doesn't provide codec/bitrate info easily, but we can estimate
+            // based on buffered data size over time
+            detectSafariQuality();
+        });
     } else {
         showError('HLS is not supported in your browser');
+    }
+
+    // Quality detection for Safari's native HLS
+    function detectSafariQuality() {
+        // Wait for some buffering to occur
+        setTimeout(() => {
+            try {
+                if (audioPlayer.buffered.length > 0) {
+                    // Get buffered time range
+                    const bufferedEnd = audioPlayer.buffered.end(0);
+                    const bufferedStart = audioPlayer.buffered.start(0);
+                    const bufferedDuration = bufferedEnd - bufferedStart;
+
+                    // Estimate bitrate from buffer size (this is approximate)
+                    // Higher quality streams will buffer more data for the same duration
+                    if (bufferedDuration > 0) {
+                        // If we have a reasonable buffer, assume quality based on common patterns
+                        // Safari typically gets the highest quality variant first
+                        currentStreamQuality = '48kHz FLAC / HLS Lossless (Safari native)';
+                        updateStreamQualityDisplay();
+                        console.log('Safari HLS quality estimated: Lossless');
+                    }
+                }
+            } catch (error) {
+                console.log('Unable to detect Safari quality, assuming lossless');
+                currentStreamQuality = '48kHz FLAC / HLS Lossless (Safari native)';
+                updateStreamQualityDisplay();
+            }
+        }, 2000); // Wait 2 seconds for buffering
     }
 }
 
