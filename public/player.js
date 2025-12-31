@@ -178,48 +178,45 @@ function initializePlayer() {
             }
         });
     } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
+        // Native HLS support (browsers with built-in HLS)
         audioPlayer.src = streamUrl;
 
-        // For Safari's native HLS, we can't detect quality changes automatically
+        // For native HLS, we can't detect quality changes automatically via hls.js events
         // Set initial state as detecting
-        currentStreamQuality = 'Detecting... (Safari native HLS)';
+        currentStreamQuality = 'Detecting...';
         updateStreamQualityDisplay();
 
         // Try to detect quality after playback starts
         audioPlayer.addEventListener('loadedmetadata', () => {
-            // Safari doesn't provide codec/bitrate info easily, but we can estimate
-            // based on buffered data size over time
-            detectSafariQuality();
+            // Native HLS doesn't provide codec/bitrate info easily through standard APIs
+            // Attempt to estimate based on available information
+            detectNativeHLSQuality();
         });
     } else {
         showError('HLS is not supported in your browser');
     }
 
-    // Quality detection for Safari's native HLS
-    function detectSafariQuality() {
-        // Wait for some buffering to occur
+    // Quality detection for native HLS support (browser-agnostic)
+    function detectNativeHLSQuality() {
+        // Wait for some buffering to occur before attempting detection
         setTimeout(() => {
             try {
+                // Native HLS implementations don't expose quality level information
+                // through standard HTMLMediaElement APIs, so we provide a generic status
                 if (audioPlayer.buffered.length > 0) {
-                    // Get buffered time range
-                    const bufferedEnd = audioPlayer.buffered.end(0);
-                    const bufferedStart = audioPlayer.buffered.start(0);
-                    const bufferedDuration = bufferedEnd - bufferedStart;
-
-                    // Estimate bitrate from buffer size (this is approximate)
-                    // Higher quality streams will buffer more data for the same duration
-                    if (bufferedDuration > 0) {
-                        // If we have a reasonable buffer, assume quality based on common patterns
-                        // Safari typically gets the highest quality variant first
-                        currentStreamQuality = '48kHz FLAC / HLS Lossless (Safari native)';
-                        updateStreamQualityDisplay();
-                        console.log('Safari HLS quality estimated: Lossless');
-                    }
+                    // We have buffered data, but cannot reliably determine quality
+                    // without hls.js level information
+                    currentStreamQuality = 'Auto (Native HLS)';
+                    updateStreamQualityDisplay();
+                    console.log('Native HLS playback active - quality determined by browser');
+                } else {
+                    // No buffered data yet
+                    currentStreamQuality = 'Detecting...';
+                    updateStreamQualityDisplay();
                 }
             } catch (error) {
-                console.log('Unable to detect Safari quality, assuming lossless');
-                currentStreamQuality = '48kHz FLAC / HLS Lossless (Safari native)';
+                console.log('Unable to detect native HLS quality information');
+                currentStreamQuality = 'Auto (Native HLS)';
                 updateStreamQualityDisplay();
             }
         }, 2000); // Wait 2 seconds for buffering
