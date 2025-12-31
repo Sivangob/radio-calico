@@ -10,6 +10,7 @@ let hls = null;
 let isPlaying = false;
 let elapsedSeconds = 0;
 let timerInterval = null;
+let currentStreamQuality = 'Detecting...'; // Track actual stream quality
 
 // Initialize volume
 audioPlayer.volume = volumeSlider.value / 100;
@@ -66,6 +67,74 @@ function hideError() {
     errorMessage.style.display = 'none';
 }
 
+// Update stream quality based on current HLS level
+function updateStreamQuality() {
+    if (!hls || hls.levels.length === 0) {
+        currentStreamQuality = 'Detecting...';
+        updateStreamQualityDisplay();
+        return;
+    }
+
+    const currentLevel = hls.levels[hls.currentLevel];
+    if (!currentLevel) {
+        currentStreamQuality = 'Unknown';
+        updateStreamQualityDisplay();
+        return;
+    }
+
+    // Try to detect quality from codec info first (more robust)
+    let qualityDetected = false;
+    if (currentLevel.audioCodec) {
+        const codec = currentLevel.audioCodec.toLowerCase();
+        // Check for FLAC codec
+        if (codec.includes('flac')) {
+            currentStreamQuality = '48kHz FLAC / HLS Lossless';
+            qualityDetected = true;
+        }
+        // Check for MP3 codec
+        else if (codec.includes('mp3') || codec.includes('mp4a')) {
+            currentStreamQuality = '192kbps VBR MP3';
+            qualityDetected = true;
+        }
+    }
+
+    // Fall back to bitrate detection if codec info is unavailable
+    if (!qualityDetected) {
+        const bitrate = currentLevel.bitrate / 1000; // Convert to kbps
+
+        // FLAC lossless will have higher bitrate (typically 600-1400 kbps)
+        // MP3 VBR will have lower bitrate (around 192 kbps)
+        if (bitrate > 300) {
+            currentStreamQuality = '48kHz FLAC / HLS Lossless';
+        } else {
+            currentStreamQuality = '192kbps VBR MP3';
+        }
+
+        console.log(`Stream quality detected via bitrate: ${currentStreamQuality} (${bitrate.toFixed(0)} kbps)`);
+    } else {
+        console.log(`Stream quality detected via codec: ${currentStreamQuality}`);
+    }
+
+    // Update the display directly without re-fetching metadata
+    updateStreamQualityDisplay();
+}
+
+// Update only the stream quality display in the DOM
+function updateStreamQualityDisplay() {
+    const metaElement = document.getElementById('currentMeta');
+    if (metaElement && metaElement.textContent) {
+        // Extract current metadata and update only the stream quality line
+        const lines = metaElement.textContent.split('\n');
+        if (lines.length >= 2) {
+            // Keep the source quality line, update stream quality line
+            metaElement.textContent = `${lines[0]}\nStream quality: ${currentStreamQuality}`;
+        } else {
+            // If metadata not yet populated, set initial format
+            metaElement.textContent = `Source quality: Unknown\nStream quality: ${currentStreamQuality}`;
+        }
+    }
+}
+
 // Initialize HLS
 function initializePlayer() {
     if (Hls.isSupported()) {
@@ -80,6 +149,13 @@ function initializePlayer() {
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
             console.log('HLS manifest loaded, stream ready');
+            // Get initial quality level
+            updateStreamQuality();
+        });
+
+        // Listen for quality level changes
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            updateStreamQuality();
         });
 
         hls.on(Hls.Events.ERROR, (event, data) => {
@@ -102,10 +178,48 @@ function initializePlayer() {
             }
         });
     } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
+        // Native HLS support (browsers with built-in HLS)
         audioPlayer.src = streamUrl;
+
+        // For native HLS, we can't detect quality changes automatically via hls.js events
+        // Set initial state as detecting
+        currentStreamQuality = 'Detecting...';
+        updateStreamQualityDisplay();
+
+        // Try to detect quality after playback starts
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            // Native HLS doesn't provide codec/bitrate info easily through standard APIs
+            // Attempt to estimate based on available information
+            detectNativeHLSQuality();
+        });
     } else {
         showError('HLS is not supported in your browser');
+    }
+
+    // Quality detection for native HLS support (browser-agnostic)
+    function detectNativeHLSQuality() {
+        // Wait for some buffering to occur before attempting detection
+        setTimeout(() => {
+            try {
+                // Native HLS implementations don't expose quality level information
+                // through standard HTMLMediaElement APIs, so we provide a generic status
+                if (audioPlayer.buffered.length > 0) {
+                    // We have buffered data, but cannot reliably determine quality
+                    // without hls.js level information
+                    currentStreamQuality = 'Auto (Native HLS)';
+                    updateStreamQualityDisplay();
+                    console.log('Native HLS playback active - quality determined by browser');
+                } else {
+                    // No buffered data yet
+                    currentStreamQuality = 'Detecting...';
+                    updateStreamQualityDisplay();
+                }
+            } catch (error) {
+                console.log('Unable to detect native HLS quality information');
+                currentStreamQuality = 'Auto (Native HLS)';
+                updateStreamQualityDisplay();
+            }
+        }, 2000); // Wait 2 seconds for buffering
     }
 }
 
@@ -236,9 +350,9 @@ function updateNowPlaying(data) {
     const metaParts = [];
     metaParts.push('Source quality: ' + (data.bit_depth && data.sample_rate ? `${data.bit_depth}-bit ${(data.sample_rate / 1000).toFixed(1)}kHz` : 'Unknown'));
 
-    if (data.bit_depth && data.sample_rate) {
-        metaParts.push(`Stream quality: ${(data.sample_rate / 1000).toFixed(0)}kHz FLAC / HLS Lossless`);
-    }
+    // Display dynamically detected stream quality
+    metaParts.push(`Stream quality: ${currentStreamQuality}`);
+
     document.getElementById('currentMeta').textContent = metaParts.join('\n');
 
     // Update album art with cache-busting timestamp
