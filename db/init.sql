@@ -25,6 +25,6 @@ CREATE TABLE IF NOT EXISTS ratings (
 );
 
 -- Create indexes for faster queries
-CREATE INDEX IF NOT EXISTS idx_ratings_song_id ON ratings(song_id);
+-- Note: idx_ratings_song_user composite index covers song_id queries due to left-prefix optimization
 CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_song_user ON ratings(song_id, user_id);

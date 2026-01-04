@@ -31,7 +31,18 @@ class Database {
       });
 
       this.pool.on('error', (err) => {
-        console.error('Unexpected error on idle client', err);
+        console.error('Unexpected error on idle PostgreSQL client:', err.message);
+        console.error('Error details:', {
+          code: err.code,
+          severity: err.severity,
+          detail: err.detail,
+          timestamp: new Date().toISOString()
+        });
+        // In production, this should trigger monitoring/alerting
+        // For now, log to help identify connection pool issues
+        if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+          console.error('WARNING: Database connection issue detected - may impact availability');
+        }
       });
 
       // Test connection
@@ -124,8 +135,16 @@ class Database {
   async run(sql, params = []) {
     if (this.type === 'postgres') {
       const result = await this.pool.query(sql, params);
+      // Extract lastID flexibly - handle RETURNING clauses with any column name
+      let lastID = null;
+      if (result.rows.length > 0) {
+        const firstRow = result.rows[0];
+        // Try 'id' first (most common), then fall back to first column
+        lastID = firstRow.id !== undefined ? firstRow.id :
+                 (Object.keys(firstRow).length > 0 ? firstRow[Object.keys(firstRow)[0]] : null);
+      }
       return {
-        lastID: result.rows[0]?.id || null,
+        lastID,
         changes: result.rowCount
       };
     } else {

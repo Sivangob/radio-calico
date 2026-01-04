@@ -334,6 +334,36 @@ describe('Database Abstraction Layer', () => {
       expect(result.lastID).toBeNull();
       expect(result.changes).toBe(3);
     });
+
+    it('should extract lastID from non-id column names in RETURNING clause', async () => {
+      const { Pool } = require('pg');
+      const mockPool = Pool._getMockPool();
+
+      // Simulate RETURNING with a different column name
+      mockPool.query.mockResolvedValue({
+        rows: [{ user_id: 99, name: 'Test' }],
+        rowCount: 1
+      });
+
+      const result = await database.run('INSERT INTO users (name) VALUES ($1) RETURNING user_id, name', ['Test']);
+      expect(result.lastID).toBe(99); // Should extract first column value
+      expect(result.changes).toBe(1);
+    });
+
+    it('should prefer id column over other columns when present', async () => {
+      const { Pool } = require('pg');
+      const mockPool = Pool._getMockPool();
+
+      // Simulate RETURNING with both user_id and id columns
+      mockPool.query.mockResolvedValue({
+        rows: [{ user_id: 50, id: 42, name: 'Test' }],
+        rowCount: 1
+      });
+
+      const result = await database.run('INSERT INTO users (name) VALUES ($1) RETURNING user_id, id, name', ['Test']);
+      expect(result.lastID).toBe(42); // Should prefer 'id' column
+      expect(result.changes).toBe(1);
+    });
   });
 
   describe('Connection Cleanup', () => {
