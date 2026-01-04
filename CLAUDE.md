@@ -100,6 +100,40 @@ Configuration via environment variables (see `.env.example`):
 - `PORT` - HTTP server port (default: 3000)
 - `DB_PATH` - SQLite database file path
 
+## Makefile Commands
+
+The project includes a Makefile for easy management:
+
+```bash
+# View all commands
+make help
+
+# Development
+make dev              # Start local server (SQLite)
+make dev-docker       # Start in Docker with hot reload
+make stop-dev         # Stop dev containers
+
+# Production
+make prod             # Start production (PostgreSQL + Nginx)
+make prod-build       # Build and start production
+make stop-prod        # Stop production
+
+# Testing
+make test             # Run all tests
+make test-watch       # Run tests in watch mode
+make test-coverage    # Run with coverage
+
+# Database (Production)
+make db-init          # Initialize PostgreSQL schema
+make db-shell         # Access PostgreSQL CLI
+make db-backup        # Backup database
+
+# Utilities
+make logs             # View production logs
+make status           # Check system status
+make clean            # Stop all and remove volumes
+```
+
 ## Docker Development
 
 ### Quick Commands
@@ -107,6 +141,8 @@ Configuration via environment variables (see `.env.example`):
 ```bash
 # Start development environment
 docker compose up
+# or
+make dev-docker
 
 # Start in detached mode
 docker compose up -d
@@ -123,8 +159,24 @@ docker compose up --build
 # Access container shell
 docker compose exec radiocalico-dev sh
 
-# Access database
-docker compose exec radiocalico-dev sqlite3 /app/data/database.db
+# Access database (dev uses SQLite)
+docker compose exec radiocalico-dev sqlite3 ./database.db
+```
+
+### Production Commands
+
+```bash
+# Start production (PostgreSQL + Nginx)
+make prod
+
+# View logs
+make logs
+
+# Access PostgreSQL shell
+make db-shell
+
+# Backup database
+make db-backup
 ```
 
 ### Key Features

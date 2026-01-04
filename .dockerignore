@@ -39,6 +39,7 @@ tests
 README.md
 README-DOCKER.md
 CLAUDE.md
+Makefile
 *.txt
 *.zip
 *.png

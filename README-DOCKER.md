@@ -9,30 +9,80 @@ This guide covers how to build and deploy Radio Calico using Docker for both dev
 
 ## Quick Start
 
+**Using Makefile (Recommended):**
+
+```bash
+# View all available commands
+make help
+
+# Start production (PostgreSQL + Nginx)
+make prod
+
+# Start development (SQLite)
+make dev-docker
+
+# Run tests
+make test
+
+# Check status
+make status
+```
+
+**Manual Commands:**
+
 ### Development Mode
 
 Start the development server with hot reloading:
 
 ```bash
-docker-compose up
+docker compose up
+# or
+make dev-docker
 ```
 
 The application will be available at http://localhost:3000
 
-To run in detached mode:
-```bash
-docker-compose up -d
-```
-
 ### Production Mode
 
-Build and start the production container:
+Build and start the production environment (PostgreSQL + Nginx):
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
+# or
+make prod
 ```
 
+The application will be available at http://localhost (port 80)
+
 ## Docker Architecture
+
+### Production Architecture (New)
+
+```
+Internet → Nginx (port 80) → Node.js App (port 3000) → PostgreSQL (port 5432)
+```
+
+**Services:**
+- **nginx**: Reverse proxy with caching, compression, security headers
+- **radiocalico**: Node.js application with connection pooling
+- **postgres**: PostgreSQL 16 database with persistent storage
+
+**Key Features:**
+- PostgreSQL with connection pooling (max 20 connections)
+- Nginx reverse proxy on port 80
+- Automatic database schema initialization
+- Health checks for all services
+- Named volumes for data persistence
+- Isolated bridge network
+
+### Development Architecture
+
+```
+localhost:3000 → Node.js App → SQLite (file-based)
+```
+
+**Services:**
+- **radiocalico-dev**: Node.js with nodemon hot-reloading and SQLite
 
 ### Multi-Stage Dockerfile
 
@@ -40,12 +90,12 @@ The project uses a multi-stage Dockerfile with three targets:
 
 1. **base** - Common dependencies and build tools
 2. **development** - Includes nodemon for hot reloading and all dev dependencies
-3. **production** - Optimized image with only production dependencies, non-root user, and health checks
+3. **production** - Optimized image with PostgreSQL client, non-root user, and health checks
 
 ### Build Stages
 
 ```
-base (Node 20 Alpine + SQLite + build tools)
+base (Node 20 Alpine + SQLite + PostgreSQL build tools)
 ├── development (All dependencies + nodemon)
 └── prod-deps → production (Production deps only + security hardening)
 ```
@@ -75,52 +125,91 @@ The application supports the following environment variables:
 
 ## Commands Reference
 
+### Using Makefile (Recommended)
+
+```bash
+# Development
+make dev              # Start local dev server (SQLite)
+make dev-docker       # Start dev in Docker with hot reload
+make stop-dev         # Stop dev containers
+
+# Production
+make prod             # Start production (auto-initializes DB)
+make prod-build       # Build and start production
+make stop-prod        # Stop production
+make restart-prod     # Restart production
+
+# Testing
+make test             # Run all tests
+make test-watch       # Run tests in watch mode
+make test-coverage    # Run tests with coverage
+
+# Database
+make db-init          # Initialize PostgreSQL schema
+make db-shell         # Access PostgreSQL CLI
+make db-backup        # Backup database to backups/
+
+# Utilities
+make logs             # View production logs
+make ps               # Show container status
+make status           # Full system status check
+make clean            # Stop all and remove volumes
+
+# Help
+make help             # Show all commands
+```
+
+### Manual Docker Commands
+
 ### Development
 
 ```bash
 # Start development environment
-docker-compose up
+docker compose up
 
 # Start in background
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop containers
-docker-compose down
+docker compose down
 
 # Rebuild after changing dependencies
-docker-compose up --build
+docker compose up --build
 
 # Access container shell
-docker-compose exec radiocalico-dev sh
+docker compose exec radiocalico-dev sh
 
 # Stop and remove volumes (WARNING: deletes database)
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Production
 
 ```bash
 # Build and start production
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Initialize database schema
+docker exec -i radiocalico-postgres psql -U radiocalico -d radiocalico < db/init.sql
 
 # View logs
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Check health status
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # Restart service
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 
 # Stop production
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Update to latest code
 git pull
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 ## Building Images Directly
