@@ -17,12 +17,35 @@ Stream URL: `https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
 
 ## Installation
 
-### Prerequisites
+You can run Radio Calico either using Docker (recommended) or directly with Node.js.
 
+### Option 1: Docker (Recommended)
+
+**Prerequisites:**
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+
+**Quick Start:**
+```bash
+# Clone the repository
+git clone https://github.com/Sivangob/radio-calico.git
+cd radio-calico
+
+# Start with Docker Compose
+docker compose up -d
+```
+
+The application will be available at **http://localhost:3000**
+
+For detailed Docker documentation, see [README-DOCKER.md](README-DOCKER.md)
+
+### Option 2: Local Node.js
+
+**Prerequisites:**
 - Node.js (v14 or higher)
 - npm
 
-### Setup
+**Setup:**
 
 1. Clone the repository:
 ```bash
@@ -39,8 +62,25 @@ npm install
 
 ## Usage
 
-### Start the Server
+### Docker
 
+```bash
+# Start in development mode (with hot reloading)
+docker compose up
+
+# Start in detached mode
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop containers
+docker compose down
+```
+
+### Local Node.js
+
+Start the server:
 ```bash
 npm start
 ```
@@ -69,9 +109,15 @@ radiocalico/
 │   ├── styles.css              # Player styling
 │   └── RadioCalicoLogoTM.png   # Radio Calico logo
 ├── server.js                    # Express server with SQLite integration
-├── database.db                  # SQLite database
+├── database.db                  # SQLite database (local development)
+├── Dockerfile                   # Multi-stage Docker build configuration
+├── docker-compose.yml           # Development Docker Compose config
+├── docker-compose.prod.yml      # Production Docker Compose config
+├── .dockerignore                # Docker build context exclusions
+├── .env.example                 # Environment variables template
 ├── package.json                 # Node.js dependencies and scripts
-└── node_modules/                # Dependencies
+├── package-lock.json            # Locked dependency versions
+└── node_modules/                # Dependencies (local only)
 ```
 
 ## API Endpoints
@@ -119,6 +165,33 @@ curl -X POST http://localhost:3000/api/users \
 | name | TEXT | User's name |
 | email | TEXT | User's email address |
 | created_at | DATETIME | Timestamp of creation |
+
+### Ratings Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Primary key (auto-increment) |
+| song_id | TEXT | Unique song identifier |
+| artist | TEXT | Artist name |
+| title | TEXT | Song title |
+| rating_type | TEXT | Rating type (thumbs_up/thumbs_down) |
+| user_id | TEXT | User identifier |
+| created_at | DATETIME | Timestamp of creation |
+
+## Docker Architecture
+
+The project uses a multi-stage Dockerfile for optimized builds:
+
+- **Development**: Includes nodemon for hot reloading, all dependencies, and source code mounting
+- **Production**: Optimized image with only production dependencies, non-root user, and health checks
+
+Key features:
+- Persistent database storage using Docker volumes
+- Isolated networking with bridge driver
+- Environment variable configuration
+- Automatic restarts and health monitoring
+
+For comprehensive Docker documentation, see [README-DOCKER.md](README-DOCKER.md)
 
 ## Development
 

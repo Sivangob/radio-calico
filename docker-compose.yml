@@ -1,0 +1,34 @@
+services:
+  radiocalico-dev:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: radiocalico-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source code for hot reloading
+      - .:/app
+      # Exclude node_modules from host
+      - /app/node_modules
+      # Persist database in named volume
+      - radiocalico-db-dev:/app/data
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_PATH=/app/data/database.db
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    networks:
+      - radiocalico-network
+
+volumes:
+  radiocalico-db-dev:
+    name: radiocalico-db-dev
+
+networks:
+  radiocalico-network:
+    name: radiocalico-network
+    driver: bridge
