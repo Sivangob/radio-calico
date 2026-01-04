@@ -1,30 +1,87 @@
-version: '3.8'
-
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: radiocalico-postgres
+    environment:
+      POSTGRES_DB: radiocalico
+      POSTGRES_USER: radiocalico
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file for production}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      # Persistent database storage
+      - postgres-data:/var/lib/postgresql/data
+      # Initialization script
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - radiocalico-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radiocalico -d radiocalico"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Node.js Application
   radiocalico:
     build:
       context: .
       target: production
       dockerfile: Dockerfile
-    container_name: radiocalico-prod
-    ports:
-      - "3000:3000"
-    volumes:
-      # Persist database in named volume
-      - radiocalico-db-prod:/app/data
+    container_name: radiocalico-app
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_PATH=/app/data/database.db
-    restart: always
+      # PostgreSQL connection
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=radiocalico
+      - POSTGRES_USER=radiocalico
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file for production}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - radiocalico-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/test-db', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
-      timeout: 3s
+      timeout: 5s
       retries: 3
       start_period: 40s
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: radiocalico-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      radiocalico:
+        condition: service_healthy
+    networks:
+      - radiocalico-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: always
     logging:
       driver: "json-file"
       options:
@@ -32,8 +89,8 @@ services:
         max-file: "3"
 
 volumes:
-  radiocalico-db-prod:
-    name: radiocalico-db-prod
+  postgres-data:
+    name: radiocalico-postgres-data
 
 networks:
   radiocalico-network:
