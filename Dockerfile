@@ -49,8 +49,11 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install sqlite runtime
-RUN apk add --no-cache sqlite
+# Install runtime dependencies for PostgreSQL client
+# Keep sqlite for backward compatibility
+RUN apk add --no-cache \
+    postgresql-client \
+    sqlite
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
@@ -61,10 +64,6 @@ COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
 
 # Copy application code
 COPY --chown=nodejs:nodejs . .
-
-# Create data directory for database with proper permissions
-RUN mkdir -p /app/data && \
-    chown nodejs:nodejs /app/data
 
 # Switch to non-root user
 USER nodejs

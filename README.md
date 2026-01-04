@@ -62,20 +62,36 @@ npm install
 
 ## Usage
 
-### Docker
+### Using Makefile (Recommended)
 
 ```bash
-# Start in development mode (with hot reloading)
-docker compose up
+# Development
+make dev              # Start local server (SQLite)
+make dev-docker       # Start in Docker with hot reload
 
-# Start in detached mode
-docker compose up -d
+# Production
+make prod             # Start production (PostgreSQL + Nginx)
 
-# View logs
-docker compose logs -f
+# Testing
+make test             # Run tests
 
-# Stop containers
-docker compose down
+# View all commands
+make help
+```
+
+### Docker Commands
+
+```bash
+# Development
+docker compose up                              # Start with hot reloading
+docker compose up -d                           # Start in background
+
+# Production
+docker compose -f docker-compose.prod.yml up -d   # Start production
+
+# Utilities
+docker compose logs -f                         # View logs
+docker compose down                            # Stop containers
 ```
 
 ### Local Node.js
