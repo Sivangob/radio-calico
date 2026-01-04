@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: radiocalico
       POSTGRES_USER: radiocalico
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file for production}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       # Persistent database storage
@@ -43,7 +43,7 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_DB=radiocalico
       - POSTGRES_USER=radiocalico
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme123}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file for production}
     depends_on:
       postgres:
         condition: service_healthy

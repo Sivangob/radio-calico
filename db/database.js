@@ -3,7 +3,8 @@ const { Pool } = require('pg');
 
 class Database {
   constructor() {
-    this.type = process.env.NODE_ENV === 'production' ? 'postgres' : 'sqlite';
+    // Allow explicit DB_TYPE override, otherwise default based on NODE_ENV
+    this.type = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'postgres' : 'sqlite');
     this.client = null;
     this.pool = null;
   }
@@ -37,6 +38,7 @@ class Database {
       this.pool.query('SELECT version()', (err, result) => {
         if (err) {
           console.error('Error connecting to PostgreSQL:', err.message);
+          this.pool.end(); // Clean up pool on connection error
           reject(err);
         } else {
           console.log('Connected to PostgreSQL database');
@@ -123,7 +125,7 @@ class Database {
     if (this.type === 'postgres') {
       const result = await this.pool.query(sql, params);
       return {
-        lastID: result.rows[0]?.id,
+        lastID: result.rows[0]?.id || null,
         changes: result.rowCount
       };
     } else {

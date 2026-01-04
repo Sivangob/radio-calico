@@ -51,13 +51,21 @@ stop-dev:
 prod:
 	@echo "Starting production environment (PostgreSQL + Nginx)..."
 	@if [ ! -f .env ]; then \
-		echo "Warning: .env file not found. Using default password."; \
-		echo "Create .env file with POSTGRES_PASSWORD for production use."; \
+		echo "ERROR: .env file not found!"; \
+		echo "Production requires POSTGRES_PASSWORD to be set."; \
+		echo ""; \
+		echo "Create a .env file with:"; \
+		echo "  POSTGRES_PASSWORD=your_secure_password_here"; \
+		echo ""; \
+		exit 1; \
 	fi
 	docker compose -f docker-compose.prod.yml up -d
 	@echo ""
 	@echo "Waiting for services to be healthy..."
-	@sleep 5
+	@until docker exec radiocalico-postgres pg_isready -U radiocalico > /dev/null 2>&1; do \
+		echo "Waiting for PostgreSQL..."; \
+		sleep 1; \
+	done
 	@echo ""
 	@echo "Initializing database schema..."
 	@docker exec -i radiocalico-postgres psql -U radiocalico -d radiocalico < db/init.sql 2>/dev/null || true
@@ -70,8 +78,20 @@ prod:
 
 prod-build:
 	@echo "Building and starting production environment..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found!"; \
+		echo "Production requires POSTGRES_PASSWORD to be set."; \
+		echo ""; \
+		echo "Create a .env file with:"; \
+		echo "  POSTGRES_PASSWORD=your_secure_password_here"; \
+		echo ""; \
+		exit 1; \
+	fi
 	docker compose -f docker-compose.prod.yml up -d --build
-	@sleep 5
+	@until docker exec radiocalico-postgres pg_isready -U radiocalico > /dev/null 2>&1; do \
+		echo "Waiting for PostgreSQL..."; \
+		sleep 1; \
+	done
 	@docker exec -i radiocalico-postgres psql -U radiocalico -d radiocalico < db/init.sql 2>/dev/null || true
 	@echo ""
 	@echo "Production environment ready!"

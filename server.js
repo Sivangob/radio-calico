@@ -37,6 +37,7 @@ app.get('/', (req, res) => {
           <li>GET /api/users - Get all users</li>
           <li>POST /api/users - Create a new user</li>
           <li>GET /api/test-db - Test database connection</li>
+          <li>GET /api/db-metrics - Get database connection pool metrics</li>
           <li>GET /api/client-ip - Get client IP address</li>
           <li>GET /api/ratings/:songId - Get rating counts for a song</li>
           <li>POST /api/ratings - Submit or update a rating</li>
@@ -53,9 +54,34 @@ app.get('/api/test-db', async (req, res) => {
     const result = await db.get(versionQuery, []);
     res.json({
       message: 'Database connected successfully',
-      database_type: process.env.NODE_ENV === 'production' ? 'PostgreSQL' : 'SQLite',
+      database_type: db.type,
       version: result.version
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Database metrics endpoint (for monitoring)
+app.get('/api/db-metrics', async (req, res) => {
+  try {
+    if (db.type === 'postgres' && db.pool) {
+      res.json({
+        database_type: 'postgres',
+        pool: {
+          total: db.pool.totalCount,
+          idle: db.pool.idleCount,
+          waiting: db.pool.waitingCount
+        }
+      });
+    } else if (db.type === 'sqlite') {
+      res.json({
+        database_type: 'sqlite',
+        message: 'SQLite does not use connection pooling'
+      });
+    } else {
+      res.status(503).json({ error: 'Database not connected' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
